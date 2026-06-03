@@ -11,8 +11,16 @@ export default defineConfig({
     host: true,
     port: 5173,
     proxy: {
-      '/api': { target: 'http://backend:4000', changeOrigin: true },
-      '/socket.io': { target: 'http://backend:4000', ws: true },
+      '/api': {
+        target: 'http://collab_backend:4000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/socket.io': {
+        target: 'http://collab_backend:4000',
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
 });
