@@ -175,7 +175,6 @@ export function useCollabEditor({ sessionId, userId, username }: UseCollabEditor
                 pos.lineNumber, pos.column
               ),
               options: {
-                description: `cursor-${user.username}`,
                 className: 'remote-cursor-line',
                 beforeContentClassName: 'remote-cursor-block',
                 stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
