@@ -10,22 +10,27 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://collab_backend:4000',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-      '/yjs': {
-        target: 'ws://collab_backend:4000',
-        ws: true,
-        changeOrigin: true,
-      },
-      '/socket.io': {
-        target: 'http://collab_backend:4000',
-        ws: true,
-        changeOrigin: true,
-      },
+    watch: {
+      usePolling: true,
+      interval: 1000,
+      ignored: ['**/node_modules/**', '**/.git/**'],
     },
+    proxy: {
+    '/api': {
+      target: 'http://localhost:4000',
+      changeOrigin: true,
+      rewrite: (path) => path.replace(/^\/api/, ''),
+    },
+    '/yjs': {
+      target: 'ws://localhost:4000',
+      ws: true,
+      changeOrigin: true,
+    },
+    '/socket.io': {
+      target: 'http://localhost:4000',
+      ws: true,
+      changeOrigin: true,
+    },
+  },
   },
 });

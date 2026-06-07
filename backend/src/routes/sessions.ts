@@ -59,4 +59,34 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ── Get session history snapshots ────────────────────────
+router.get('/:slug/history', async (req: AuthRequest, res: Response) => {
+  try {
+    const { rows: sessionRows } = await pool.query(
+      'SELECT id FROM sessions WHERE slug = $1', [req.params.slug]
+    );
+    if (!sessionRows[0]) return res.status(404).json({ error: 'Session not found' });
+
+    const { rows } = await pool.query(
+      `SELECT seq, payload, created_at
+       FROM operations
+       WHERE session_id = $1
+       ORDER BY seq ASC`,
+      [sessionRows[0].id]
+    );
+
+    // return as base64 so JSON can carry binary
+    const ops = rows.map(r => ({
+      seq: r.seq,
+      payload: Buffer.from(r.payload).toString('base64'),
+      created_at: r.created_at,
+    }));
+
+    res.json({ ops, total: ops.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 export default router;

@@ -40,15 +40,32 @@ async function getOrCreateRoom(sessionId: string): Promise<Room> {
   }
 
   let updateCount = 0;
+  let seqCounter  = 0;
+
   doc.on('update', async (update: Uint8Array) => {
+    console.log(`📝 Update received for room: ${sessionId}, size: ${update.length}`);
     // broadcast to all clients in this room
     const msg = encodeSync(update);
     clients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) client.send(msg);
     });
 
-    // persist every 30 updates
     updateCount++;
+    seqCounter++;
+
+    // save every op to operations table for history replay
+    try {
+      await pool.query(
+        `INSERT INTO operations (session_id, seq, payload, user_id)
+        SELECT s.id, $2, $3, s.owner_id
+        FROM sessions s WHERE s.slug = $1`,
+        [sessionId, seqCounter, Buffer.from(update)]
+      );
+    } catch (err) {
+      console.error(`Failed to save operation for ${sessionId}:`, err);
+    }
+
+    // persist full state every 30 updates
     if (updateCount % 30 === 0) {
       try {
         const state = Y.encodeStateAsUpdate(doc);
@@ -103,7 +120,9 @@ export function setupYjs(httpServer: HttpServer) {
 
   wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
     const url       = new URL(req.url!, `http://localhost`);
-    const sessionId = url.searchParams.get('room') || 'default';
+    // y-websocket sends room as the last path segment e.g. /yjs/aB3kR7xQ
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    const sessionId = pathParts[pathParts.length - 1] || url.searchParams.get('room') || 'default';
 
     const room = await getOrCreateRoom(sessionId);
     room.clients.add(ws);

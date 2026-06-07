@@ -6,6 +6,8 @@ import { useTheme } from '@/context/ThemeContext';
 import { useCollabEditor } from '@/hooks/useCollabEditor';
 import ChatSidebar from '@/components/ChatSidebar';
 import PresenceBar from '@/components/PresenceBar';
+import HistoryTimeline from '@/components/HistoryTimeline';
+
 import toast from 'react-hot-toast';
 
 const LANGUAGES = ['javascript','typescript','python','go','rust','html','css','json'];
@@ -17,6 +19,7 @@ export default function Editor() {
   const navigate = useNavigate();
   const [lineCol, setLineCol] = useState('Ln 1, Col 1');
   const [sidebarTab, setSidebarTab] = useState<'chat' | 'users'>('chat');
+  const [showHistory, setShowHistory] = useState(false);
 
   const { bindEditor, connected, peers, color, language, changeLanguage } = useCollabEditor({
     sessionId: sessionId!,
@@ -83,6 +86,12 @@ export default function Editor() {
           border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)',
           padding: '4px 12px', cursor: 'pointer',
         }}>⎘ Share</button>
+
+        <button onClick={() => setShowHistory(true)} style={{
+          fontSize: 11, color: 'var(--text-secondary)', background: 'transparent',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+          padding: '4px 12px', cursor: 'pointer',
+        }}>⏱ History</button>
 
         <button onClick={toggle} style={{
           background: 'transparent', border: 'none', fontSize: 16,
@@ -179,6 +188,11 @@ export default function Editor() {
           <span key={i} style={{ fontSize: 10, color: 'rgba(255,255,255,0.85)' }}>{item}</span>
         ))}
       </div>
+      <HistoryTimeline
+        sessionId={sessionId!}
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+      />
     </div>
   );
 }

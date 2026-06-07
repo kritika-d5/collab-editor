@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
+import { setAuthToken } from '@/lib/api';
 
 interface User { id: string; username: string; email: string; }
 interface AuthCtx {
@@ -30,11 +31,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user && accessToken) {
       sessionStorage.setItem('auth_user', JSON.stringify(user));
       sessionStorage.setItem('auth_token', accessToken);
+      // set on both axios instances globally
       axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+      setAuthToken(accessToken);
     } else {
       sessionStorage.removeItem('auth_user');
       sessionStorage.removeItem('auth_token');
       delete axios.defaults.headers.common['Authorization'];
+      setAuthToken(null);
     }
   }, [user, accessToken]);
 
