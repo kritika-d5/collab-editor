@@ -39,44 +39,39 @@ async function getOrCreateRoom(sessionId: string): Promise<Room> {
     console.error(`Failed to load doc state for ${sessionId}:`, err);
   }
 
-  let updateCount = 0;
-  let seqCounter  = 0;
+  let seqCounter = 0;
+  let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 
   doc.on('update', async (update: Uint8Array) => {
-    console.log(`📝 Update received for room: ${sessionId}, size: ${update.length}`);
     // broadcast to all clients in this room
     const msg = encodeSync(update);
     clients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) client.send(msg);
     });
 
-    updateCount++;
-    seqCounter++;
-
-    // save every op to operations table for history replay
-    try {
-      await pool.query(
-        `INSERT INTO operations (session_id, seq, payload, user_id)
-        SELECT s.id, $2, $3, s.owner_id
-        FROM sessions s WHERE s.slug = $1`,
-        [sessionId, seqCounter, Buffer.from(update)]
-      );
-    } catch (err) {
-      console.error(`Failed to save operation for ${sessionId}:`, err);
-    }
-
-    // persist full state every 30 updates
-    if (updateCount % 30 === 0) {
+    // debounce snapshot saving — only save after 3s of inactivity
+    if (snapshotTimer) clearTimeout(snapshotTimer);
+    snapshotTimer = setTimeout(async () => {
+      seqCounter++;
+      const state = Y.encodeStateAsUpdate(doc);
       try {
-        const state = Y.encodeStateAsUpdate(doc);
+        // save snapshot to operations table
+        await pool.query(
+          `INSERT INTO operations (session_id, seq, payload, user_id)
+          SELECT s.id, $2, $3, s.owner_id
+          FROM sessions s WHERE s.slug = $1`,
+          [sessionId, seqCounter, Buffer.from(state)]
+        );
+        // also update doc_state
         await pool.query(
           'UPDATE sessions SET doc_state = $1 WHERE slug = $2',
           [Buffer.from(state), sessionId]
         );
+        console.log(`💾 Snapshot saved for room: ${sessionId} (seq ${seqCounter})`);
       } catch (err) {
-        console.error(`Failed to persist doc state for ${sessionId}:`, err);
+        console.error(`Failed to save snapshot for ${sessionId}:`, err);
       }
-    }
+    }, 3000);
   });
 
   awareness.on('update', ({ added, updated, removed }: any) => {

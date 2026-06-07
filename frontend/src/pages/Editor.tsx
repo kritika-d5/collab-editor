@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import MonacoEditor from '@monaco-editor/react';
 import { useAuth } from '@/context/AuthContext';
@@ -20,6 +20,7 @@ export default function Editor() {
   const [lineCol, setLineCol] = useState('Ln 1, Col 1');
   const [sidebarTab, setSidebarTab] = useState<'chat' | 'users'>('chat');
   const [showHistory, setShowHistory] = useState(false);
+  const monacoRef = useRef<any>(null);
 
   const { bindEditor, connected, peers, color, language, changeLanguage } = useCollabEditor({
     sessionId: sessionId!,
@@ -28,6 +29,8 @@ export default function Editor() {
   });
 
   const handleEditorMount = useCallback((editor: any) => {
+    monacoRef.current = editor;
+    console.log('Editor mounted, getValue test:', editor.getValue());
     bindEditor(editor);
     editor.onDidChangeCursorPosition((e: any) => {
       setLineCol(`Ln ${e.position.lineNumber}, Col ${e.position.column}`);
@@ -37,6 +40,36 @@ export default function Editor() {
   function copyLink() {
     navigator.clipboard.writeText(window.location.href);
     toast.success('Link copied!');
+  }
+
+  function downloadFile() {
+    // try monacoRef first, then query the DOM model
+    let content = monacoRef.current?.getValue();
+    
+    if (!content) {
+      // fallback — get all text from Monaco's model
+      const models = (window as any).monaco?.editor?.getModels();
+      if (models?.length) content = models[0].getValue();
+    }
+
+    if (!content) {
+      toast.error('Editor is empty');
+      return;
+    }
+
+    const extensions: Record<string, string> = {
+      javascript: 'js', typescript: 'ts', python: 'py',
+      go: 'go', rust: 'rs', html: 'html', css: 'css', json: 'json',
+    };
+    const ext  = extensions[language] || 'txt';
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `${sessionId}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Downloaded as ${sessionId}.${ext}`);
   }
 
   if (!user) { navigate('/login'); return null; }
@@ -86,6 +119,12 @@ export default function Editor() {
           border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)',
           padding: '4px 12px', cursor: 'pointer',
         }}>⎘ Share</button>
+
+        <button onClick={downloadFile} style={{
+          fontSize: 11, color: 'var(--text-secondary)', background: 'transparent',
+          border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)',
+          padding: '4px 12px', cursor: 'pointer',
+        }}>⬇ Download</button>
 
         <button onClick={() => setShowHistory(true)} style={{
           fontSize: 11, color: 'var(--text-secondary)', background: 'transparent',
@@ -192,6 +231,11 @@ export default function Editor() {
         sessionId={sessionId!}
         isOpen={showHistory}
         onClose={() => setShowHistory(false)}
+        onRestore={(content) => {
+          monacoRef.current?.setValue(content);
+          setShowHistory(false);
+          toast.success('Version restored!');
+        }}
       />
     </div>
   );

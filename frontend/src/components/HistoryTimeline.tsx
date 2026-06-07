@@ -3,9 +3,9 @@ import * as Y from 'yjs';
 import axios from 'axios';
 
 interface Op { seq: number; payload: string; created_at: string; }
-interface Props { sessionId: string; isOpen: boolean; onClose: () => void; }
+interface Props { sessionId: string; isOpen: boolean; onClose: () => void; onRestore: (content: string) => void; }
 
-export default function HistoryTimeline({ sessionId, isOpen, onClose }: Props) {
+export default function HistoryTimeline({ sessionId, isOpen, onClose, onRestore }: Props) {
   const [ops, setOps]           = useState<Op[]>([]);
   const [scrubPos, setScrubPos] = useState(100); // percentage 0-100
   const [preview, setPreview]   = useState('');
@@ -26,16 +26,19 @@ export default function HistoryTimeline({ sessionId, isOpen, onClose }: Props) {
 
   useEffect(() => {
     if (!ops.length) return;
-    // reconstruct doc up to scrubPos%
-    const count = Math.max(1, Math.round((scrubPos / 100) * ops.length));
-    const slice = ops.slice(0, count);
-    const doc   = new Y.Doc();
-    slice.forEach(op => {
+    // each op is now a full snapshot — just pick the one at scrubPos
+    const index = Math.max(0, Math.round((scrubPos / 100) * (ops.length - 1)));
+    const op    = ops[index];
+    if (!op) return;
+    try {
+      const doc   = new Y.Doc();
       const bytes = Uint8Array.from(atob(op.payload), c => c.charCodeAt(0));
       Y.applyUpdate(doc, bytes);
-    });
-    setPreview(doc.getText('content').toString());
-    doc.destroy();
+      setPreview(doc.getText('content').toString());
+      doc.destroy();
+    } catch (err) {
+      console.error('Failed to reconstruct snapshot:', err);
+    }
   }, [scrubPos, ops]);
 
   if (!isOpen) return null;
@@ -67,10 +70,29 @@ export default function HistoryTimeline({ sessionId, isOpen, onClose }: Props) {
               {ops.length} operations recorded
             </div>
           </div>
-          <button onClick={onClose} style={{
-            background: 'transparent', border: 'none', fontSize: 18,
-            cursor: 'pointer', color: 'var(--text-muted)',
-          }}>✕</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+  {ops.length > 0 && scrubPos < 100 && (
+    <button
+        onClick={() => {
+          console.log('Restoring content:', preview);
+          onRestore(preview);
+        }}
+
+        style={{
+          fontSize: 12, padding: '6px 14px',
+          background: 'var(--accent)', color: '#fff',
+          border: 'none', borderRadius: 'var(--radius-sm)',
+          cursor: 'pointer', fontWeight: 500,
+        }}
+      >
+        ↩ Restore this version
+      </button>
+    )}
+    <button onClick={onClose} style={{
+      background: 'transparent', border: 'none', fontSize: 18,
+      cursor: 'pointer', color: 'var(--text-muted)',
+    }}>✕</button>
+  </div>
         </div>
 
         {/* Scrubber */}
