@@ -9,27 +9,32 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "nanoid": "3.3.7",
     "pg": "^8.11.3",
     "redis": "^4.6.12",
-    "dotenv": "^16.3.1",
-    "cors": "^2.8.5",
-    "helmet": "^7.1.0",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
-    "nanoid": "3.3.7"
+    "socket.io": "^4.8.3",
+    "ws": "^8.21.0",
+    "y-websocket": "^3.0.0",
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
-    "@types/pg": "^8.10.9",
-    "@types/cors": "^2.8.17",
-    "@types/node": "^20.11.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.5",
-    "typescript": "^5.3.3",
-    "ts-node-dev": "^2.0.0",
-    "eslint": "^8.56.0",
+    "@types/node": "^20.19.42",
+    "@types/pg": "^8.10.9",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
-    "@typescript-eslint/parser": "^6.19.0"
+    "@typescript-eslint/parser": "^6.19.0",
+    "eslint": "^8.56.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.3"
   }
 }

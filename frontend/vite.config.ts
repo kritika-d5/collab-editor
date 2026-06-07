@@ -16,6 +16,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
+      '/yjs': {
+        target: 'ws://collab_backend:4000',
+        ws: true,
+        changeOrigin: true,
+      },
       '/socket.io': {
         target: 'http://collab_backend:4000',
         ws: true,

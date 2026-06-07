@@ -7,16 +7,12 @@ import { config } from '../config/env';
 
 const router = Router();
 
-// ── Register ────────────────────────────────────────────
 router.post('/register', async (req: Request, res: Response) => {
   const { username, email, password } = req.body;
-
   if (!username || !email || !password)
     return res.status(400).json({ error: 'All fields required' });
-
   if (password.length < 8)
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
-
   try {
     const hash = await bcrypt.hash(password, 12);
     const { rows } = await pool.query(
@@ -24,60 +20,45 @@ router.post('/register', async (req: Request, res: Response) => {
       [username, email, hash]
     );
     const user = rows[0];
-    const { accessToken, refreshToken } = generateTokens(user.id);
+    const { accessToken, refreshToken } = generateTokens(user.id, user.username);
     await storeRefreshToken(user.id, refreshToken);
-
     res.status(201).json({ user, accessToken, refreshToken });
   } catch (err: any) {
     if (err.code === '23505')
       return res.status(409).json({ error: 'Username or email already taken' });
-    console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ── Login ───────────────────────────────────────────────
 router.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
-
   if (!email || !password)
     return res.status(400).json({ error: 'Email and password required' });
-
   try {
     const { rows } = await pool.query(
-      'SELECT id, username, email, password FROM users WHERE email = $1',
-      [email]
+      'SELECT id, username, email, password FROM users WHERE email = $1', [email]
     );
     const user = rows[0];
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
-
-    const { accessToken, refreshToken } = generateTokens(user.id);
+    const { accessToken, refreshToken } = generateTokens(user.id, user.username);
     await storeRefreshToken(user.id, refreshToken);
-
     const { password: _, ...safeUser } = user;
     res.json({ user: safeUser, accessToken, refreshToken });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ── Refresh ─────────────────────────────────────────────
 router.post('/refresh', async (req: Request, res: Response) => {
   const { refreshToken } = req.body;
-  if (!refreshToken)
-    return res.status(400).json({ error: 'Refresh token required' });
-
+  if (!refreshToken) return res.status(400).json({ error: 'Refresh token required' });
   try {
-    const payload = jwt.verify(refreshToken, config.jwtRefreshSecret) as { userId: string };
+    const payload = jwt.verify(refreshToken, config.jwtRefreshSecret) as { userId: string; username: string };
     const stored = await redis.get(`refresh:${payload.userId}`);
-    if (stored !== refreshToken)
-      return res.status(401).json({ error: 'Invalid refresh token' });
-
-    const { accessToken, refreshToken: newRefresh } = generateTokens(payload.userId);
+    if (stored !== refreshToken) return res.status(401).json({ error: 'Invalid refresh token' });
+    const { accessToken, refreshToken: newRefresh } = generateTokens(payload.userId, payload.username);
     await storeRefreshToken(payload.userId, newRefresh);
     res.json({ accessToken, refreshToken: newRefresh });
   } catch {
@@ -85,17 +66,15 @@ router.post('/refresh', async (req: Request, res: Response) => {
   }
 });
 
-// ── Logout ──────────────────────────────────────────────
 router.post('/logout', async (req: Request, res: Response) => {
   const { userId } = req.body;
   if (userId) await redis.del(`refresh:${userId}`);
   res.json({ message: 'Logged out' });
 });
 
-// ── Helpers ─────────────────────────────────────────────
-function generateTokens(userId: string) {
-  const accessToken = jwt.sign({ userId }, config.jwtSecret, { expiresIn: '15m' });
-  const refreshToken = jwt.sign({ userId }, config.jwtRefreshSecret, { expiresIn: '7d' });
+function generateTokens(userId: string, username: string) {
+  const accessToken = jwt.sign({ userId, username }, config.jwtSecret, { expiresIn: '15m' });
+  const refreshToken = jwt.sign({ userId, username }, config.jwtRefreshSecret, { expiresIn: '7d' });
   return { accessToken, refreshToken };
 }
 

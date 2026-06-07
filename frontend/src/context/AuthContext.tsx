@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
 
 interface User { id: string; username: string; email: string; }
@@ -13,8 +13,30 @@ interface AuthCtx {
 const AuthContext = createContext<AuthCtx | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    // rehydrate from sessionStorage on page load
+    try {
+      const saved = sessionStorage.getItem('auth_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+
+  const [accessToken, setAccessToken] = useState<string | null>(() => {
+    return sessionStorage.getItem('auth_token');
+  });
+
+  // keep sessionStorage in sync
+  useEffect(() => {
+    if (user && accessToken) {
+      sessionStorage.setItem('auth_user', JSON.stringify(user));
+      sessionStorage.setItem('auth_token', accessToken);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+    } else {
+      sessionStorage.removeItem('auth_user');
+      sessionStorage.removeItem('auth_token');
+      delete axios.defaults.headers.common['Authorization'];
+    }
+  }, [user, accessToken]);
 
   async function register(username: string, email: string, password: string) {
     const { data } = await axios.post('/api/auth/register', { username, email, password });
