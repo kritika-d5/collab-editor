@@ -4,15 +4,13 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../db/postgres';
 import { redis } from '../db/redis';
 import { config } from '../config/env';
+import { validate, registerSchema, loginSchema } from '../lib/validate';
+
 
 const router = Router();
 
-router.post('/register', async (req: Request, res: Response) => {
+router.post('/register', validate(registerSchema), async (req: Request, res: Response) => {
   const { username, email, password } = req.body;
-  if (!username || !email || !password)
-    return res.status(400).json({ error: 'All fields required' });
-  if (password.length < 8)
-    return res.status(400).json({ error: 'Password must be at least 8 characters' });
   try {
     const hash = await bcrypt.hash(password, 12);
     const { rows } = await pool.query(
@@ -30,10 +28,8 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', validate(loginSchema), async (req: Request, res: Response) => {
   const { email, password } = req.body;
-  if (!email || !password)
-    return res.status(400).json({ error: 'Email and password required' });
   try {
     const { rows } = await pool.query(
       'SELECT id, username, email, password FROM users WHERE email = $1', [email]

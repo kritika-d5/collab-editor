@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import axios from 'axios';
-import { setAuthToken } from '@/lib/api';
+import api, { setAuthToken } from '@/lib/api';
 
 interface User { id: string; username: string; email: string; }
 interface AuthCtx {
@@ -32,30 +31,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.setItem('auth_user', JSON.stringify(user));
       sessionStorage.setItem('auth_token', accessToken);
       // set on both axios instances globally
-      axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
       setAuthToken(accessToken);
     } else {
       sessionStorage.removeItem('auth_user');
       sessionStorage.removeItem('auth_token');
-      delete axios.defaults.headers.common['Authorization'];
       setAuthToken(null);
     }
   }, [user, accessToken]);
 
   async function register(username: string, email: string, password: string) {
-    const { data } = await axios.post('/api/auth/register', { username, email, password });
+    const { data } = await api.post('/auth/register', { username, email, password });
     setUser(data.user);
     setAccessToken(data.accessToken);
   }
 
   async function login(email: string, password: string) {
-    const { data } = await axios.post('/api/auth/login', { email, password });
+    const { data } = await api.post('/auth/login', { email, password });
     setUser(data.user);
     setAccessToken(data.accessToken);
   }
 
   function logout() {
-    if (user) axios.post('/api/auth/logout', { userId: user.id });
+    if (user) api.post('/auth/logout', { userId: user.id });
     setUser(null);
     setAccessToken(null);
   }

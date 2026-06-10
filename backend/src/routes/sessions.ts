@@ -2,12 +2,15 @@ import { Router, Response } from 'express';
 import { nanoid } from 'nanoid';
 import { pool } from '../db/postgres';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { validate, createSessionSchema } from '../lib/validate';
+import { getSessionAccess } from '../lib/lobby';
+import { logger } from '../lib/logger';
 
 const router = Router();
 router.use(authMiddleware);
 
 // ── Create session ───────────────────────────────────────
-router.post('/', async (req: AuthRequest, res: Response) => {
+router.post('/', validate(createSessionSchema), async (req: AuthRequest, res: Response) => {
   const { language = 'javascript' } = req.body;
   const slug = nanoid(8);
 
@@ -18,9 +21,10 @@ router.post('/', async (req: AuthRequest, res: Response) => {
        RETURNING id, slug, language, created_at`,
       [slug, req.userId, language]
     );
-    res.status(201).json(rows[0]);
+    res.status(201).json({ ...rows[0], owner_id: req.userId, access: 'owner' });
   } catch (err) {
     console.error(err);
+    logger.error({ error: err }, 'Could not create session');
     res.status(500).json({ error: 'Could not create session' });
   }
 });
@@ -37,9 +41,11 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         [req.params.slug]
       );
       if (!rows[0]) return res.status(404).json({ error: 'Session not found' });
-      res.json(rows[0]);
+      const access = await getSessionAccess(req.params.slug, req.userId!);
+      res.json({ ...rows[0], access });
   } catch (err) {
     console.error(err);
+    logger.error({ error: err, slug: req.params.slug }, 'Could not fetch session');
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -56,6 +62,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     res.json(rows);
   } catch (err) {
     console.error(err);
+    logger.error({ error: err, userId: req.userId }, 'Could not list sessions');
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -86,6 +93,7 @@ router.get('/:slug/history', async (req: AuthRequest, res: Response) => {
     res.json({ ops, total: ops.length });
   } catch (err) {
     console.error(err);
+    logger.error({ error: err, slug: req.params.slug }, 'Could not fetch session history');
     res.status(500).json({ error: 'Server error' });
   }
 });

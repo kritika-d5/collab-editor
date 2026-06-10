@@ -1,10 +1,12 @@
+type LobbyVariant = 'checking' | 'waiting' | 'denied' | 'not_found';
+
 interface Props {
   username: string;
-  denied: boolean;
+  variant: LobbyVariant;
   onCancel: () => void;
 }
 
-export default function LobbyScreen({ username, denied, onCancel }: Props) {
+export default function LobbyScreen({ username, variant, onCancel }: Props) {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'var(--bg-primary)',
@@ -16,7 +18,22 @@ export default function LobbyScreen({ username, denied, onCancel }: Props) {
         borderRadius: 'var(--radius-lg)', padding: '40px 48px',
         textAlign: 'center', maxWidth: 400, width: '100%',
       }}>
-        {denied ? (
+        {variant === 'not_found' ? (
+          <>
+            <div style={{ fontSize: 40, marginBottom: 16 }}>🔍</div>
+            <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+              Room not found
+            </h2>
+            <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 }}>
+              This session doesn't exist or the link is invalid.
+            </p>
+            <button onClick={onCancel} style={{
+              padding: '10px 24px', borderRadius: 'var(--radius-md)',
+              background: 'var(--accent)', color: '#fff',
+              border: 'none', fontSize: 14, cursor: 'pointer',
+            }}>Go back</button>
+          </>
+        ) : variant === 'denied' ? (
           <>
             <div style={{ fontSize: 40, marginBottom: 16 }}>🚫</div>
             <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
@@ -31,6 +48,16 @@ export default function LobbyScreen({ username, denied, onCancel }: Props) {
               border: 'none', fontSize: 14, cursor: 'pointer',
             }}>Go back</button>
           </>
+        ) : variant === 'checking' ? (
+          <>
+            <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
+            <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+              Checking access
+            </h2>
+            <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+              Verifying room permissions...
+            </p>
+          </>
         ) : (
           <>
             <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
@@ -43,7 +70,6 @@ export default function LobbyScreen({ username, denied, onCancel }: Props) {
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 28 }}>
               The host will let you in soon...
             </p>
-            {/* Animated dots */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 28 }}>
               {[0, 1, 2].map(i => (
                 <div key={i} style={{

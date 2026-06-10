@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import * as monaco from 'monaco-editor';
+import { YJS_URL } from '@/lib/config';
 
 const USER_COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#8b5cf6'];
 
@@ -19,9 +20,10 @@ interface UseCollabEditorProps {
   sessionId: string;
   userId: string;
   username: string;
+  enabled?: boolean;
 }
 
-export function useCollabEditor({ sessionId, userId, username }: UseCollabEditorProps) {
+export function useCollabEditor({ sessionId, userId, username, enabled = true }: UseCollabEditorProps) {
   const ydocRef          = useRef<Y.Doc | null>(null);
   const providerRef      = useRef<WebsocketProvider | null>(null);
   const editorRef        = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -33,19 +35,22 @@ export function useCollabEditor({ sessionId, userId, username }: UseCollabEditor
   const color = getUserColor(userId);
 
   useEffect(() => {
-    // force clean doc per session — each sessionId gets its own Y.Doc
+    if (!enabled) return;
+
+    const token = sessionStorage.getItem('auth_token');
     const ydoc  = new Y.Doc({ guid: `${sessionId}-${TAB_CLIENT_ID}` });
     const ytext = ydoc.getText('content');
     const ymeta = ydoc.getMap('meta');
 
-    const provider  = new WebsocketProvider(
-      `ws://localhost:4000/yjs`,
-      sessionId,  // ← this is the room name on the server
+    const provider = new WebsocketProvider(
+      YJS_URL,
+      sessionId,
       ydoc,
-      { connect: true, resyncInterval: 3000}
+      { connect: true, resyncInterval: 3000, params: { token: token ?? '' } }
     );
-    const awareness = provider.awareness;
 
+    const awareness = provider.awareness;
+    
     ydocRef.current    = ydoc;
     providerRef.current = provider;
 
@@ -111,7 +116,7 @@ export function useCollabEditor({ sessionId, userId, username }: UseCollabEditor
         ydoc.destroy();
       }, 100); // small delay so null state broadcasts first
     };
-  }, [sessionId, userId, username, color]);
+  }, [sessionId, userId, username, color, enabled]);
 
   const changeLanguage = useCallback((lang: string) => {
     const ymeta = ydocRef.current?.getMap('meta');

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import * as Y from 'yjs';
-import axios from 'axios';
+import api from '@/lib/api';
 
 interface Op { seq: number; payload: string; created_at: string; }
 interface Props { sessionId: string; isOpen: boolean; onClose: () => void; onRestore: (content: string) => void; }
@@ -15,7 +15,7 @@ export default function HistoryTimeline({ sessionId, isOpen, onClose, onRestore 
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
-    axios.get(`/api/sessions/${sessionId}/history`)
+    api.get(`/sessions/${sessionId}/history`)
       .then(({ data }) => {
         setOps(data.ops);
         setScrubPos(100);

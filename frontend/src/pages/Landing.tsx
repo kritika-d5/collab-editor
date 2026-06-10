@@ -23,7 +23,7 @@ export default function Landing() {
     setLoading(true);
     try {
       const { data } = await api.post('/sessions', { language: 'javascript' });
-      navigate(`/editor/${data.slug}`);
+      navigate(`/editor/${data.slug}`, { state: { justCreated: true } });
     } catch {
       toast.error('Failed to create room');
     } finally {

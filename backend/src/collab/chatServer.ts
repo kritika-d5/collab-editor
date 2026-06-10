@@ -1,6 +1,8 @@
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/env';
+import { logger } from '../lib/logger';
+import { canAccessSession, getSessionOwner, grantLobbyAccess } from '../lib/lobby';
 
 interface ChatMessage {
   id: string;
@@ -41,12 +43,14 @@ export function setupChat(io: Server) {
     const { userId, username } = socket.data;
     const color = userColor(userId);
 
-    socket.on('join:room', (sessionId: string) => {
+    socket.on('join:room', async (sessionId: string) => {
+      if (!await canAccessSession(sessionId, userId)) return;
       socket.join(sessionId);
       socket.to(sessionId).emit('user:joined', { username, color });
     });
 
-    socket.on('chat:message', (data: { sessionId: string; text: string }) => {
+    socket.on('chat:message', async (data: { sessionId: string; text: string }) => {
+      if (!await canAccessSession(data.sessionId, userId)) return;
       const message: ChatMessage = {
         id: `${Date.now()}-${userId}`,
         userId,
@@ -58,21 +62,31 @@ export function setupChat(io: Server) {
       chatNsp.to(data.sessionId).emit('chat:message', message);
     });
 
+    socket.on('lobby:request', async (data: { sessionId: string; username: string }) => {
+      const ownerId = await getSessionOwner(data.sessionId);
+      if (!ownerId || String(ownerId) === String(userId)) return;
 
-socket.on('lobby:request', (data: { sessionId: string; username: string }) => {
-  // broadcast to everyone in the room (owner will be there)
-  socket.join(`lobby:${data.sessionId}`);
-  socket.to(data.sessionId).emit('lobby:request', {
-    username,
-    userId,
-    color,
-    socketId: socket.id,
-    sessionId: data.sessionId,
-  });
-});
+      socket.join(`lobby:${data.sessionId}`);
+      socket.to(data.sessionId).emit('lobby:request', {
+        username,
+        userId,
+        color,
+        socketId: socket.id,
+        sessionId: data.sessionId,
+      });
+    });
 
-    socket.on('lobby:respond', (data: { socketId: string; approved: boolean; sessionId: string }) => {
-      // send response directly to the waiting user
+    socket.on('lobby:respond', async (data: { socketId: string; approved: boolean; sessionId: string }) => {
+      const ownerId = await getSessionOwner(data.sessionId);
+      if (ownerId !== userId) return;
+
+      if (data.approved) {
+        const guestSocket = chatNsp.sockets.get(data.socketId);
+        if (guestSocket?.data.userId) {
+          await grantLobbyAccess(data.sessionId, guestSocket.data.userId);
+        }
+      }
+
       chatNsp.to(data.socketId).emit('lobby:response', {
         approved: data.approved,
         sessionId: data.sessionId,
@@ -85,4 +99,5 @@ socket.on('lobby:request', (data: { sessionId: string; username: string }) => {
   });
 
   console.log('Chat server ready');
+  logger.info('Chat server ready');
 }

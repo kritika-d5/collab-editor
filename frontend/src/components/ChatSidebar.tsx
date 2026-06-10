@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@/context/AuthContext';
+import { CHAT_URL } from '@/lib/config';
 
 interface Message {
   id: string;
@@ -22,7 +23,7 @@ export default function ChatSidebar({ sessionId }: Props) {
 
   useEffect(() => {
     if (!accessToken) return;
-    const s = io('http://localhost:4000/chat', {
+    const s = io(CHAT_URL, {
       auth: { token: accessToken },
       transports: ['websocket', 'polling'],
       reconnection: true,

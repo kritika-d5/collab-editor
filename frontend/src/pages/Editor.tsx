@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import MonacoEditor from '@monaco-editor/react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -10,6 +10,7 @@ import HistoryTimeline from '@/components/HistoryTimeline';
 import LobbyScreen from '@/components/LobbyScreen';
 import { io, Socket } from 'socket.io-client';
 import api from '@/lib/api';
+import { CHAT_URL } from '@/lib/config';
 import { useEffect } from 'react';
 
 
@@ -22,18 +23,22 @@ export default function Editor() {
   const { user, accessToken } = useAuth();
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [lineCol, setLineCol] = useState('Ln 1, Col 1');
   const [sidebarTab, setSidebarTab] = useState<'chat' | 'users'>('chat');
   const [showHistory, setShowHistory] = useState(false);
   const monacoRef = useRef<any>(null);
-  const [lobbyState, setLobbyState] = useState<'enter' | 'waiting' | 'denied'>('enter');
-  const [isOwner, setIsOwner]       = useState(false);
+  type LobbyState = 'checking' | 'waiting' | 'denied' | 'enter' | 'not_found';
+  const [lobbyState, setLobbyState] = useState<LobbyState>('checking');
   const socketRef                   = useRef<Socket | null>(null);
+
+  const canEnter = lobbyState === 'enter';
 
   const { bindEditor, connected, peers, color, language, changeLanguage } = useCollabEditor({
     sessionId: sessionId!,
     userId: user?.id || 'anonymous',
     username: user?.username || 'Anonymous',
+    enabled: canEnter,
   });
 
   const handleEditorMount = useCallback((editor: any) => {
@@ -45,101 +50,139 @@ export default function Editor() {
     });
   }, [bindEditor]);
 
-    useEffect(() => {
+  useEffect(() => {
     if (!user || !sessionId || !accessToken) return;
 
-    // check if current user is the owner
-      api.get(`/sessions/${sessionId}`)
-        .then(({ data }) => {
-          const owner = data.owner_id === user.id;
-          setIsOwner(owner);
+    setLobbyState('checking');
+    socketRef.current?.disconnect();
+    socketRef.current = null;
 
-          if (owner) {
-            const s = io('http://localhost:4000/chat', {
-              auth: { token: accessToken },
-              transports: ['websocket', 'polling'],
-            });
-            socketRef.current = s;
-            s.on('connect', () => s.emit('join:room', sessionId));
-            s.on('lobby:request', (data: { username: string; socketId: string; color: string }) => {
-              toast((t) => (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>
-                    <span style={{ color: data.color }}>●</span> {data.username} wants to join
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={() => {
-                        socketRef.current?.emit('lobby:respond', {
-                          socketId: data.socketId,
-                          approved: true,
-                          sessionId,
-                        });
-                        toast.dismiss(t.id);
-                        toast.success(`${data.username} let in`);
-                      }}
-                      style={{
-                        padding: '5px 14px', borderRadius: 6,
-                        background: '#22c55e', color: '#fff',
-                        border: 'none', cursor: 'pointer', fontSize: 12,
-                      }}
-                    >Accept</button>
-                    <button
-                      onClick={() => {
-                        socketRef.current?.emit('lobby:respond', {
-                          socketId: data.socketId,
-                          approved: false,
-                          sessionId,
-                        });
-                        toast.dismiss(t.id);
-                      }}
-                      style={{
-                        padding: '5px 14px', borderRadius: 6,
-                        background: '#ef4444', color: '#fff',
-                        border: 'none', cursor: 'pointer', fontSize: 12,
-                      }}
-                    >Reject</button>
-                  </div>
-                </div>
-              ), { duration: 30000 });
-            });
-          }
-          if (!owner) {
-            // non-owner — connect to chat socket and request entry
-            const s = io('http://localhost:4000/chat', {
-              auth: { token: accessToken },
-              transports: ['websocket', 'polling'],
-            });
-            socketRef.current = s;
+    const s = io(CHAT_URL, {
+      auth: { token: accessToken },
+      transports: ['websocket', 'polling'],
+    });
+    socketRef.current = s;
 
-            let requested = false;
-            s.on('connect', () => {
-              s.emit('join:room', sessionId);
-              if (!requested) {
-                requested = true;
-                s.emit('lobby:request', { sessionId, username: user.username });
-                setLobbyState('waiting');
-              }
-            });
+    const joinRoom = () => s.emit('join:room', sessionId);
 
-            s.on('lobby:response', ({ approved }: { approved: boolean }) => {
-              if (approved) {
-                setLobbyState('enter');
-                toast.success('You\'ve been let in!');
-              } else {
-                setLobbyState('denied');
-              }
-            });
-          } else {
-            setLobbyState('enter');
-          }
-        })
-        .catch(() => setLobbyState('enter'));
+    const setupOwner = () => {
+      s.on('connect', joinRoom);
+      s.on('lobby:request', (data: { username: string; socketId: string; color: string; userId: string }) => {
+        if (String(data.userId) === String(user.id)) return;
+        toast((t) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>
+              <span style={{ color: data.color }}>●</span> {data.username} wants to join
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => {
+                  socketRef.current?.emit('lobby:respond', {
+                    socketId: data.socketId,
+                    approved: true,
+                    sessionId,
+                  });
+                  toast.dismiss(t.id);
+                  toast.success(`${data.username} let in`);
+                }}
+                style={{
+                  padding: '5px 14px', borderRadius: 6,
+                  background: '#22c55e', color: '#fff',
+                  border: 'none', cursor: 'pointer', fontSize: 12,
+                }}
+              >Accept</button>
+              <button
+                onClick={() => {
+                  socketRef.current?.emit('lobby:respond', {
+                    socketId: data.socketId,
+                    approved: false,
+                    sessionId,
+                  });
+                  toast.dismiss(t.id);
+                }}
+                style={{
+                  padding: '5px 14px', borderRadius: 6,
+                  background: '#ef4444', color: '#fff',
+                  border: 'none', cursor: 'pointer', fontSize: 12,
+                }}
+              >Reject</button>
+            </div>
+          </div>
+        ), { duration: 30000 });
+      });
+      if (s.connected) joinRoom();
+      setLobbyState('enter');
+    };
 
+    const setupApprovedGuest = () => {
+      s.on('connect', joinRoom);
+      if (s.connected) joinRoom();
+      setLobbyState('enter');
+    };
+
+    const setupPendingGuest = () => {
+      let requested = false;
+      const requestEntry = () => {
+        if (requested) return;
+        requested = true;
+        s.emit('lobby:request', { sessionId, username: user.username });
+        setLobbyState('waiting');
+      };
+
+      s.on('connect', requestEntry);
+      s.on('lobby:response', ({ approved }: { approved: boolean }) => {
+        if (approved) {
+          joinRoom();
+          setLobbyState('enter');
+          toast.success('You\'ve been let in!');
+        } else {
+          setLobbyState('denied');
+        }
+      });
+
+      if (s.connected) requestEntry();
+    };
+
+    const justCreated = (location.state as { justCreated?: boolean } | null)?.justCreated;
+    if (justCreated) {
+      window.history.replaceState({}, '', location.pathname);
+      setupOwner();
       return () => {
         socketRef.current?.disconnect();
+        socketRef.current = null;
       };
-    }, [user, sessionId, accessToken]);
+    }
+
+    api.get(`/sessions/${sessionId}`)
+      .then(({ data }) => {
+        const { access, owner_id } = data as {
+          access: 'owner' | 'approved' | 'pending';
+          owner_id: string;
+        };
+        const isOwner = String(owner_id) === String(user.id);
+
+        if (isOwner || access === 'owner') {
+          setupOwner();
+        } else if (access === 'approved') {
+          setupApprovedGuest();
+        } else if (access === 'pending') {
+          setupPendingGuest();
+        } else {
+          setLobbyState('denied');
+        }
+      })
+      .catch((err) => {
+        s.disconnect();
+        socketRef.current = null;
+        if (err.response?.status === 404) setLobbyState('not_found');
+        else setLobbyState('denied');
+      });
+
+    return () => {
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, [user, sessionId, accessToken, location.pathname, location.state]);
 
   function copyLink() {
     navigator.clipboard.writeText(window.location.href);
@@ -178,11 +221,11 @@ export default function Editor() {
 
   if (!user) { navigate('/login'); return null; }
 
-  if (lobbyState === 'waiting' || lobbyState === 'denied') {
+  if (lobbyState !== 'enter') {
     return (
       <LobbyScreen
         username={user.username}
-        denied={lobbyState === 'denied'}
+        variant={lobbyState}
         onCancel={() => navigate('/')}
       />
     );
