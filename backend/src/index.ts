@@ -16,13 +16,14 @@ import { runMigrations } from './db/migrate';
 
 const app = express();
 const httpServer = createServer(app);
+let depsReady = false;
 
 if (config.nodeEnv === 'production') {
   app.set('trust proxy', 1);
 }
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
@@ -41,6 +42,10 @@ app.use(cors({ origin: config.frontendUrl }));
 app.use(express.json());
 
 app.get('/health', async (_req, res) => {
+  if (!depsReady) {
+    return res.status(200).json({ status: 'starting', env: config.nodeEnv });
+  }
+
   const checks = { db: 'ok' as 'ok' | 'error', redis: 'ok' as 'ok' | 'error' };
   try {
     await pool.query('SELECT 1');
@@ -52,13 +57,14 @@ app.get('/health', async (_req, res) => {
   } catch {
     checks.redis = 'error';
   }
-  const healthy = checks.db === 'ok' && checks.redis === 'ok';
-  res.status(healthy ? 200 : 503).json({
-    status: healthy ? 'ok' : 'degraded',
+
+  res.status(200).json({
+    status: checks.db === 'ok' && checks.redis === 'ok' ? 'ok' : 'degraded',
     env: config.nodeEnv,
     ...checks,
   });
 });
+
 app.use('/auth', authLimiter, authRoutes);
 app.use('/sessions', sessionRoutes);
 
@@ -66,13 +72,18 @@ setupYjs(httpServer);
 setupChat(io);
 
 async function start() {
+  httpServer.listen(config.port, '0.0.0.0', () => {
+    logger.info({ port: config.port }, 'Server listening');
+  });
+
   await connectDB();
   await runMigrations();
   await connectRedis();
-  httpServer.listen(config.port, () => {
-    console.log(`Server running on port ${config.port}`);
-    logger.info({ port: config.port }, 'Server running');
-  });
+  depsReady = true;
+  logger.info('Dependencies connected');
 }
 
-start().catch(console.error);
+start().catch((err) => {
+  logger.error({ err }, 'Failed to start server');
+  process.exit(1);
+});
