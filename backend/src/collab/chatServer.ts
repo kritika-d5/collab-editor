@@ -58,6 +58,27 @@ export function setupChat(io: Server) {
       chatNsp.to(data.sessionId).emit('chat:message', message);
     });
 
+
+socket.on('lobby:request', (data: { sessionId: string; username: string }) => {
+  // broadcast to everyone in the room (owner will be there)
+  socket.join(`lobby:${data.sessionId}`);
+  socket.to(data.sessionId).emit('lobby:request', {
+    username,
+    userId,
+    color,
+    socketId: socket.id,
+    sessionId: data.sessionId,
+  });
+});
+
+    socket.on('lobby:respond', (data: { socketId: string; approved: boolean; sessionId: string }) => {
+      // send response directly to the waiting user
+      chatNsp.to(data.socketId).emit('lobby:response', {
+        approved: data.approved,
+        sessionId: data.sessionId,
+      });
+    });
+
     socket.on('disconnect', () => {
       socket.broadcast.emit('user:left', { username });
     });

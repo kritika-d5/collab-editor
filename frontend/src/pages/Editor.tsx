@@ -7,6 +7,11 @@ import { useCollabEditor } from '@/hooks/useCollabEditor';
 import ChatSidebar from '@/components/ChatSidebar';
 import PresenceBar from '@/components/PresenceBar';
 import HistoryTimeline from '@/components/HistoryTimeline';
+import LobbyScreen from '@/components/LobbyScreen';
+import { io, Socket } from 'socket.io-client';
+import api from '@/lib/api';
+import { useEffect } from 'react';
+
 
 import toast from 'react-hot-toast';
 
@@ -14,13 +19,16 @@ const LANGUAGES = ['javascript','typescript','python','go','rust','html','css','
 
 export default function Editor() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const { user } = useAuth();
+  const { user, accessToken } = useAuth();
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
   const [lineCol, setLineCol] = useState('Ln 1, Col 1');
   const [sidebarTab, setSidebarTab] = useState<'chat' | 'users'>('chat');
   const [showHistory, setShowHistory] = useState(false);
   const monacoRef = useRef<any>(null);
+  const [lobbyState, setLobbyState] = useState<'enter' | 'waiting' | 'denied'>('enter');
+  const [isOwner, setIsOwner]       = useState(false);
+  const socketRef                   = useRef<Socket | null>(null);
 
   const { bindEditor, connected, peers, color, language, changeLanguage } = useCollabEditor({
     sessionId: sessionId!,
@@ -36,6 +44,102 @@ export default function Editor() {
       setLineCol(`Ln ${e.position.lineNumber}, Col ${e.position.column}`);
     });
   }, [bindEditor]);
+
+    useEffect(() => {
+    if (!user || !sessionId || !accessToken) return;
+
+    // check if current user is the owner
+      api.get(`/sessions/${sessionId}`)
+        .then(({ data }) => {
+          const owner = data.owner_id === user.id;
+          setIsOwner(owner);
+
+          if (owner) {
+            const s = io('http://localhost:4000/chat', {
+              auth: { token: accessToken },
+              transports: ['websocket', 'polling'],
+            });
+            socketRef.current = s;
+            s.on('connect', () => s.emit('join:room', sessionId));
+            s.on('lobby:request', (data: { username: string; socketId: string; color: string }) => {
+              toast((t) => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>
+                    <span style={{ color: data.color }}>●</span> {data.username} wants to join
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => {
+                        socketRef.current?.emit('lobby:respond', {
+                          socketId: data.socketId,
+                          approved: true,
+                          sessionId,
+                        });
+                        toast.dismiss(t.id);
+                        toast.success(`${data.username} let in`);
+                      }}
+                      style={{
+                        padding: '5px 14px', borderRadius: 6,
+                        background: '#22c55e', color: '#fff',
+                        border: 'none', cursor: 'pointer', fontSize: 12,
+                      }}
+                    >Accept</button>
+                    <button
+                      onClick={() => {
+                        socketRef.current?.emit('lobby:respond', {
+                          socketId: data.socketId,
+                          approved: false,
+                          sessionId,
+                        });
+                        toast.dismiss(t.id);
+                      }}
+                      style={{
+                        padding: '5px 14px', borderRadius: 6,
+                        background: '#ef4444', color: '#fff',
+                        border: 'none', cursor: 'pointer', fontSize: 12,
+                      }}
+                    >Reject</button>
+                  </div>
+                </div>
+              ), { duration: 30000 });
+            });
+          }
+          if (!owner) {
+            // non-owner — connect to chat socket and request entry
+            const s = io('http://localhost:4000/chat', {
+              auth: { token: accessToken },
+              transports: ['websocket', 'polling'],
+            });
+            socketRef.current = s;
+
+            let requested = false;
+            s.on('connect', () => {
+              s.emit('join:room', sessionId);
+              if (!requested) {
+                requested = true;
+                s.emit('lobby:request', { sessionId, username: user.username });
+                setLobbyState('waiting');
+              }
+            });
+
+            s.on('lobby:response', ({ approved }: { approved: boolean }) => {
+              if (approved) {
+                setLobbyState('enter');
+                toast.success('You\'ve been let in!');
+              } else {
+                setLobbyState('denied');
+              }
+            });
+          } else {
+            setLobbyState('enter');
+          }
+        })
+        .catch(() => setLobbyState('enter'));
+
+      return () => {
+        socketRef.current?.disconnect();
+      };
+    }, [user, sessionId, accessToken]);
 
   function copyLink() {
     navigator.clipboard.writeText(window.location.href);
@@ -73,6 +177,16 @@ export default function Editor() {
   }
 
   if (!user) { navigate('/login'); return null; }
+
+  if (lobbyState === 'waiting' || lobbyState === 'denied') {
+    return (
+      <LobbyScreen
+        username={user.username}
+        denied={lobbyState === 'denied'}
+        onCancel={() => navigate('/')}
+      />
+    );
+  }
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>

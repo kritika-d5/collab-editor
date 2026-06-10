@@ -26,17 +26,18 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 });
 
 // ── Get session by slug ──────────────────────────────────
-router.get('/:slug', async (req: AuthRequest, res: Response) => {
-  try {
-    const { rows } = await pool.query(
-      `SELECT s.id, s.slug, s.language, s.created_at, u.username as owner
-       FROM sessions s
-       JOIN users u ON u.id = s.owner_id
-       WHERE s.slug = $1`,
-      [req.params.slug]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Session not found' });
-    res.json(rows[0]);
+  router.get('/:slug', async (req: AuthRequest, res: Response) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT s.id, s.slug, s.language, s.created_at, 
+                u.username as owner, s.owner_id
+        FROM sessions s
+        JOIN users u ON u.id = s.owner_id
+        WHERE s.slug = $1`,
+        [req.params.slug]
+      );
+      if (!rows[0]) return res.status(404).json({ error: 'Session not found' });
+      res.json(rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
