@@ -82,8 +82,8 @@ export default function Landing() {
           <span style={{ color: 'var(--accent)' }}>in real time.</span>
         </h1>
         <p style={{ fontSize: 15, color: 'var(--text-secondary)', marginBottom: 40, lineHeight: 1.6 }}>
-          Create a room, shareeeee the link, and collaborate instantly.
-          No setup, no frictio.
+          Create a room, share the link, and collaborate instantly.
+          No setup, no friction.
         </p>
 
         {/* Actions */}
