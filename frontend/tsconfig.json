@@ -10,7 +10,8 @@
     "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": { "@/*": ["src/*"] },
-    "types": ["node", "react", "react-dom"]
+    "types": ["node", "react", "react-dom"],
+    "noEmit": true
   },
   "include": ["src"],
   "exclude": ["node_modules"]
