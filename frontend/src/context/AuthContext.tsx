@@ -14,7 +14,6 @@ const AuthContext = createContext<AuthCtx | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
-    // rehydrate from sessionStorage on page load
     try {
       const saved = sessionStorage.getItem('auth_user');
       return saved ? JSON.parse(saved) : null;
@@ -22,15 +21,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const [accessToken, setAccessToken] = useState<string | null>(() => {
-    return sessionStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token');
+    if (token) setAuthToken(token); // set axios header synchronously, before any child mounts
+    return token;
   });
 
-  // keep sessionStorage in sync
   useEffect(() => {
     if (user && accessToken) {
       sessionStorage.setItem('auth_user', JSON.stringify(user));
       sessionStorage.setItem('auth_token', accessToken);
-      // set on both axios instances globally
       setAuthToken(accessToken);
     } else {
       sessionStorage.removeItem('auth_user');
