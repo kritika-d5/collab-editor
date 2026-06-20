@@ -8,8 +8,12 @@ export const redis = createClient({
   },
 });
 
+redis.on('error', (err) => {
+  console.error('Redis client error:', err);
+});
+
 export async function connectRedis() {
   await redis.connect();
   const pong = await redis.ping();
-  console.log(`✅ Redis connected: ${pong}`);
+  console.log(`Redis connected: ${pong}`);
 }
