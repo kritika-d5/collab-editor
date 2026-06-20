@@ -22,7 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [accessToken, setAccessToken] = useState<string | null>(() => {
     const token = sessionStorage.getItem('auth_token');
-    if (token) setAuthToken(token); // set axios header synchronously, before any child mounts
+    if (token) setAuthToken(token);
     return token;
   });
 
@@ -42,18 +42,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = await api.post('/auth/register', { username, email, password });
     setUser(data.user);
     setAccessToken(data.accessToken);
+    sessionStorage.setItem('refresh_token', data.refreshToken);
   }
 
   async function login(email: string, password: string) {
     const { data } = await api.post('/auth/login', { email, password });
     setUser(data.user);
     setAccessToken(data.accessToken);
+    sessionStorage.setItem('refresh_token', data.refreshToken);
   }
 
   function logout() {
     if (user) api.post('/auth/logout', { userId: user.id });
     setUser(null);
     setAccessToken(null);
+    sessionStorage.removeItem('refresh_token');
   }
 
   return (
