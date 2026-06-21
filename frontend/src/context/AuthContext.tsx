@@ -8,6 +8,7 @@ interface AuthCtx {
   login: (email: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
+  setAccessTokenDirect: (token: string) => void;
 }
 
 const AuthContext = createContext<AuthCtx | null>(null);
@@ -59,8 +60,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem('refresh_token');
   }
 
+  // Allows components (like ChatSidebar) to push a silently-refreshed token
+  // into context without going through the full login flow.
+  function setAccessTokenDirect(token: string) {
+    setAccessToken(token);
+  }
+
   return (
-    <AuthContext.Provider value={{ user, accessToken, login, register, logout }}>
+    <AuthContext.Provider value={{ user, accessToken, login, register, logout, setAccessTokenDirect }}>
       {children}
     </AuthContext.Provider>
   );

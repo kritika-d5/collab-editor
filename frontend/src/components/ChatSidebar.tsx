@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@/context/AuthContext';
-import { CHAT_URL } from '@/lib/config';
+import { CHAT_URL, API_BASE } from '@/lib/config';
+import axios from 'axios';
 
 interface Message {
   id: string;
@@ -15,7 +16,7 @@ interface Message {
 interface Props { sessionId: string; }
 
 export default function ChatSidebar({ sessionId }: Props) {
-  const { user, accessToken } = useAuth();
+  const { accessToken, setAccessTokenDirect } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -23,12 +24,15 @@ export default function ChatSidebar({ sessionId }: Props) {
 
   useEffect(() => {
     if (!accessToken) return;
+    let cancelled = false;
+
     const s = io(CHAT_URL, {
       auth: { token: accessToken },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,
     });
+
     s.emit('join:room', sessionId);
     s.on('chat:message', (msg: Message) => {
       setMessages(prev => [...prev, msg]);
@@ -43,15 +47,40 @@ export default function ChatSidebar({ sessionId }: Props) {
         id: Date.now().toString(), username, text: `${username} left`, color: '#8b8fa8', timestamp: Date.now(), system: true
       }]);
     });
-    s.on('connect_error', (err) => {
+
+    // ── Auth failure → refresh token → reconnect ──────────────
+    s.on('connect_error', async (err) => {
       console.error('Chat connection error:', err.message);
+
+      const isAuthError = err.message?.toLowerCase().includes('auth') ||
+                           err.message?.toLowerCase().includes('token') ||
+                           err.message?.toLowerCase().includes('unauthorized');
+
+      if (!isAuthError || cancelled) return;
+
+      try {
+        const refreshToken = sessionStorage.getItem('refresh_token');
+        if (!refreshToken) return;
+
+        const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
+
+        sessionStorage.setItem('auth_token', data.accessToken);
+        sessionStorage.setItem('refresh_token', data.refreshToken);
+        setAccessTokenDirect(data.accessToken); // updates AuthContext state → triggers this effect to re-run with fresh token
+      } catch (refreshErr) {
+        console.error('Chat token refresh failed:', refreshErr);
+      }
     });
 
     s.on('connect', () => {
       console.log('Chat connected');
     });
+
     setSocket(s);
-    return () => { s.disconnect(); };
+    return () => {
+      cancelled = true;
+      s.disconnect();
+    };
   }, [sessionId, accessToken]);
 
   useEffect(() => {
