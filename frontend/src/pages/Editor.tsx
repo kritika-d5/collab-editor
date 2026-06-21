@@ -8,6 +8,7 @@ import ChatSidebar from '@/components/ChatSidebar';
 import PresenceBar from '@/components/PresenceBar';
 import HistoryTimeline from '@/components/HistoryTimeline';
 import LobbyScreen from '@/components/LobbyScreen';
+import OutputPanel from '@/components/OutputPanel';
 import { io, Socket } from 'socket.io-client';
 import api from '@/lib/api';
 import { CHAT_URL } from '@/lib/config';
@@ -17,6 +18,16 @@ import { useEffect } from 'react';
 import toast from 'react-hot-toast';
 
 const LANGUAGES = ['javascript','typescript','python','go','rust','html','css','json'];
+const RUNNABLE_LANGUAGES = ['javascript','typescript','python','go','rust'];
+
+interface ExecutionResult {
+  stdout: string | null;
+  stderr: string | null;
+  compile_output: string | null;
+  status: string;
+  time: string | null;
+  memory: number | null;
+}
 
 export default function Editor() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -31,6 +42,11 @@ export default function Editor() {
   type LobbyState = 'checking' | 'waiting' | 'denied' | 'enter' | 'not_found';
   const [lobbyState, setLobbyState] = useState<LobbyState>('checking');
   const socketRef                   = useRef<Socket | null>(null);
+
+  // ── Run code state ──
+  const [showOutput, setShowOutput]   = useState(false);
+  const [isRunning, setIsRunning]     = useState(false);
+  const [runResult, setRunResult]     = useState<ExecutionResult | null>(null);
 
   const canEnter = lobbyState === 'enter';
 
@@ -49,6 +65,38 @@ export default function Editor() {
       setLineCol(`Ln ${e.position.lineNumber}, Col ${e.position.column}`);
     });
   }, [bindEditor]);
+
+  async function runCode() {
+    const code = monacoRef.current?.getValue();
+    if (!code?.trim()) {
+      toast.error('Editor is empty');
+      return;
+    }
+    if (!RUNNABLE_LANGUAGES.includes(language)) {
+      toast.error(`Running ${language} is not supported`);
+      return;
+    }
+
+    setShowOutput(true);
+    setIsRunning(true);
+    setRunResult(null);
+
+    try {
+      const { data } = await api.post('/execute', { language, code });
+      setRunResult(data);
+    } catch (err: any) {
+      setRunResult({
+        stdout: null,
+        stderr: err.response?.data?.error || 'Execution failed',
+        compile_output: null,
+        status: 'Error',
+        time: null,
+        memory: null,
+      });
+    } finally {
+      setIsRunning(false);
+    }
+  }
 
   useEffect(() => {
     if (!user || !sessionId || !accessToken) return;
@@ -271,6 +319,19 @@ export default function Editor() {
         <PresenceBar peers={peers} currentUser={user.username} currentColor={color} />
         <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
 
+        <button
+          onClick={runCode}
+          disabled={isRunning || !RUNNABLE_LANGUAGES.includes(language)}
+          title={!RUNNABLE_LANGUAGES.includes(language) ? `Running ${language} isn't supported` : undefined}
+          style={{
+            fontSize: 11, color: '#fff', background: 'var(--green, #22c55e)',
+            border: 'none', borderRadius: 'var(--radius-sm)',
+            padding: '4px 12px', cursor: isRunning ? 'default' : 'pointer',
+            opacity: (isRunning || !RUNNABLE_LANGUAGES.includes(language)) ? 0.5 : 1,
+            display: 'flex', alignItems: 'center', gap: 4,
+          }}
+        >▶ {isRunning ? 'Running...' : 'Run'}</button>
+
         <button onClick={copyLink} style={{
           fontSize: 11, color: 'var(--accent)', background: 'transparent',
           border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)',
@@ -296,27 +357,35 @@ export default function Editor() {
       </div>
 
       {/* ── Main area ── */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <MonacoEditor
-            height="100%"
-            language={language}
-            theme={theme === 'dark' ? 'vs-dark' : 'light'}
-            onMount={handleEditorMount}
-            options={{
-              fontSize: 14,
-              fontFamily: 'Fira Code, Consolas, monospace',
-              fontLigatures: true,
-              minimap: { enabled: true },
-              scrollBeyondLastLine: false,
-              smoothScrolling: true,
-              cursorBlinking: 'smooth',
-              cursorSmoothCaretAnimation: 'on',
-              renderLineHighlight: 'all',
-              bracketPairColorization: { enabled: true },
-              padding: { top: 16 },
-              wordWrap: 'on',
-            }}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <MonacoEditor
+              height="100%"
+              language={language}
+              theme={theme === 'dark' ? 'vs-dark' : 'light'}
+              onMount={handleEditorMount}
+              options={{
+                fontSize: 14,
+                fontFamily: 'Fira Code, Consolas, monospace',
+                fontLigatures: true,
+                minimap: { enabled: true },
+                scrollBeyondLastLine: false,
+                smoothScrolling: true,
+                cursorBlinking: 'smooth',
+                cursorSmoothCaretAnimation: 'on',
+                renderLineHighlight: 'all',
+                bracketPairColorization: { enabled: true },
+                padding: { top: 16 },
+                wordWrap: 'on',
+              }}
+            />
+          </div>
+          <OutputPanel
+            isOpen={showOutput}
+            isRunning={isRunning}
+            result={runResult}
+            onClose={() => setShowOutput(false)}
           />
         </div>
 
