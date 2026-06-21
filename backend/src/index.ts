@@ -13,6 +13,8 @@ import { setupChat } from './collab/chatServer';
 import rateLimit from 'express-rate-limit';
 import { logger } from './lib/logger';
 import { runMigrations } from './db/migrate';
+import executeRoutes from './routes/execute';
+
 
 const app = express();
 const httpServer = createServer(app);
@@ -67,6 +69,7 @@ app.get('/health', async (_req, res) => {
 
 app.use('/auth', authLimiter, authRoutes);
 app.use('/sessions', sessionRoutes);
+app.use('/execute', executeRoutes);
 
 setupYjs(httpServer);
 setupChat(io);
